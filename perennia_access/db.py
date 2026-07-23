@@ -1,75 +1,78 @@
 """Database connection management."""
 
+from contextlib import contextmanager
+
 import pymysql
-from pymysql.cursors import DictCursor
+import pymysql.cursors
+
 from .config import DatabaseConfig
 from .exceptions import AccessDatabaseError
 
 
 class Database:
-    """Manages MySQL connections for perennia-access."""
-    
+    """Thin connection/transaction wrapper. Not a multi-engine abstraction."""
+
     def __init__(self, config: DatabaseConfig):
-        self.config = config
-        self._connection = None
-    
-    def connect(self):
-        """Establish a connection to the database."""
+        self._config = config
+
+    def _connect(self):
         try:
-            self._connection = pymysql.connect(
-                host=self.config.host,
-                port=self.config.port,
-                user=self.config.user,
-                password=self.config.password,
-                database=self.config.database,
-                charset=self.config.charset,
-                cursorclass=DictCursor,
+            return pymysql.connect(
+                host=self._config.host,
+                port=self._config.port,
+                user=self._config.user,
+                password=self._config.password,
+                database=self._config.database,
+                charset=self._config.charset,
+                cursorclass=pymysql.cursors.DictCursor,
+                autocommit=False,
             )
         except pymysql.MySQLError as e:
             raise AccessDatabaseError(f"Database connection failed: {str(e)}") from e
-    
-    def disconnect(self):
-        """Close the database connection."""
-        if self._connection:
-            self._connection.close()
-            self._connection = None
-    
-    def execute(self, query: str, args: tuple = None) -> list:
-        """Execute a SELECT query and return results."""
-        if not self._connection:
-            raise AccessDatabaseError("Database connection not established")
-        
+
+    @contextmanager
+    def transaction(self):
+        """Yields a cursor. Commits on success, rolls back on any exception."""
+        conn = self._connect()
         try:
-            with self._connection.cursor() as cursor:
-                cursor.execute(query, args or ())
-                return cursor.fetchall()
+            cur = conn.cursor()
+            yield cur
+            conn.commit()
+        except pymysql.MySQLError as e:
+            conn.rollback()
+            raise AccessDatabaseError(f"Query execution failed: {str(e)}") from e
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    @contextmanager
+    def cursor(self):
+        """Read-only convenience cursor."""
+        conn = self._connect()
+        try:
+            cur = conn.cursor()
+            yield cur
         except pymysql.MySQLError as e:
             raise AccessDatabaseError(f"Query execution failed: {str(e)}") from e
-    
+        finally:
+            conn.close()
+
+    def execute(self, query: str, args: tuple = None) -> list:
+        """Execute a SELECT query and return results. Opens/closes its own connection."""
+        with self.cursor() as cur:
+            cur.execute(query, args or ())
+            return cur.fetchall()
+
     def execute_insert(self, query: str, args: tuple = None) -> int:
-        """Execute an INSERT query and return the inserted ID."""
-        if not self._connection:
-            raise AccessDatabaseError("Database connection not established")
-        
-        try:
-            with self._connection.cursor() as cursor:
-                cursor.execute(query, args or ())
-                self._connection.commit()
-                return cursor.lastrowid
-        except pymysql.MySQLError as e:
-            self._connection.rollback()
-            raise AccessDatabaseError(f"Insert failed: {str(e)}") from e
-    
+        """Execute an INSERT query and return the inserted ID. Commits or rolls back."""
+        with self.transaction() as cur:
+            cur.execute(query, args or ())
+            return cur.lastrowid
+
     def execute_delete(self, query: str, args: tuple = None) -> int:
         """Execute a DELETE query and return the number of affected rows."""
-        if not self._connection:
-            raise AccessDatabaseError("Database connection not established")
-        
-        try:
-            with self._connection.cursor() as cursor:
-                cursor.execute(query, args or ())
-                self._connection.commit()
-                return cursor.rowcount
-        except pymysql.MySQLError as e:
-            self._connection.rollback()
-            raise AccessDatabaseError(f"Delete failed: {str(e)}") from e
+        with self.transaction() as cur:
+            cur.execute(query, args or ())
+            return cur.rowcount

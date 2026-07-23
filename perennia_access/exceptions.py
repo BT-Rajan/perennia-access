@@ -11,36 +11,40 @@ Three classes of failure:
 """
 
 
-class AccessError(Exception):
+class PerenniaAccessError(Exception):
     """Base error. Safe to show to clients."""
     code = "access_error"
 
 
-class AuthorizationDenied(AccessError):
+class AuthorizationDenied(PerenniaAccessError):
     """Authenticated identity does not have the required permission."""
     code = "authorization_denied"
 
 
-class PermissionNotFoundError(AccessError):
+class PermissionNotFoundError(PerenniaAccessError):
     """Permission does not exist in the system."""
     code = "permission_not_found"
 
 
-class RoleNotFoundError(AccessError):
+class RoleNotFoundError(PerenniaAccessError):
     """Role does not exist in the system."""
     code = "role_not_found"
 
 
-class InvalidAccessConfigurationError(AccessError):
+class InvalidAccessConfigurationError(PerenniaAccessError):
     """Access configuration is invalid or inconsistent."""
     code = "invalid_access_configuration"
 
 
-class AccessDatabaseError(AccessError):
+class AccessDatabaseError(PerenniaAccessError):
     """Database connection or query failure."""
     code = "access_database_error"
 
 
-class InvalidIdentityError(AccessError):
+class InvalidIdentityError(PerenniaAccessError):
     """Identity object is invalid or cannot be processed."""
     code = "invalid_identity"
+
+
+# Backward-compatible alias for the old base class name.
+AccessError = PerenniaAccessError

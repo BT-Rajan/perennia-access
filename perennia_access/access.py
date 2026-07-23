@@ -52,8 +52,7 @@ class PerenniaAccess:
     def __init__(self, config: AccessConfig):
         self.config = config
         self.db = Database(config.database)
-        self.db.connect()
-        
+
         self.permissions = PermissionRepository(self.db)
         self.roles = RoleRepository(self.db)
         self.role_permissions = RolePermissionRepository(self.db)
@@ -273,7 +272,3 @@ class PerenniaAccess:
         """Validate that an identity is properly formed."""
         if not identity or not identity.subject_id:
             raise InvalidIdentityError("Identity must have a subject_id")
-    
-    def __del__(self):
-        """Clean up database connection on deletion."""
-        self.db.disconnect()
